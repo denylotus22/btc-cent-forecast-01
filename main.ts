@@ -32,6 +32,10 @@
 //     on the five final practice checkpoints (32,809 cents) but collapsed on the
 //     54-point walk-forward (72,483 cents) - textbook overfitting to one downtrend week.
 //     No fitted coefficients are used here; the weights are fixed in advance.
+// The market id is the trading pair (e.g. btc-usdc), not the case id: every case in
+// a run must name the same market, or a stray file from another market would be
+// forecast silently against the wrong series. On well-formed input (every practice
+// and final case) this guard never fires and the outputs are unchanged.
 //   - The guess is the checkpoint close times exp(d), kept on the 5-decimal grid and
 //     inside (0, 10,000,000), exactly as the starter does. The program is deterministic
 //     (no clock, no randomness) and pure standard library, so two runs agree byte for
@@ -117,9 +121,14 @@ function forecast(m: CaseMarket): number {
 mkdirSync(OUTPUT_DIR, { recursive: true });
 // Every case file, in name order, so two runs write the same bytes.
 const inputs = readdirSync(INPUT_DIR).filter((f) => f.endsWith('.in')).sort();
+let marketId: string | null = null;
 for (const file of inputs) {
   const id = file.slice(0, -'.in'.length);
   const c = JSON.parse(readFileSync(join(INPUT_DIR, file), 'utf8')) as Case;
   if (!Array.isArray(c.markets) || c.markets.length !== 1) throw new Error(`${file} does not hold exactly one market`);
+  const market = c.markets[0] as CaseMarket;
+  if (typeof market.id !== 'string' || market.id.length === 0) throw new Error(`${file} holds a market with no id`);
+  if (marketId === null) marketId = market.id;
+  else if (market.id !== marketId) throw new Error(`${file} holds market ${market.id}, expected ${marketId}`);
   writeFileSync(join(OUTPUT_DIR, `${id}.out`), `${JSON.stringify({ forecasts: [{ case: id, price: forecast(c.markets[0] as CaseMarket) }] })}\n`);
 }
